@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shikaku Puzzle Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .game-container {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+        }
+        
+        .board {
+            display: grid;
+            gap: 1px;
+            background-color: #333;
+            border: 2px solid #333;
+            position: relative;
+        }
+        
+        .cell {
+            width: 40px;
+            height: 40px;
+            background-color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            position: relative;
+            user-select: none;
+        }
+        
+        .rectangle {
+            position: absolute;
+            background-color: rgba(100, 200, 100, 0.3);
+            border: 2px solid #64c864;
+            pointer-events: none;
+            z-index: 2;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        .info-panel {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .timer {
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        
+        .message {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        
+        .rectangle-palette {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .palette-rectangle {
+            width: 60px;
+            height: 60px;
+            border: 2px solid #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        
+        .palette-rectangle.selected {
+            border-color: #4CAF50;
+            background-color: rgba(100, 200, 100, 0.2);
+        }
+
+        .cell.highlight {
+            background-color: rgba(100, 200, 255, 0.3);
+            border: 1px solid #64a8ff;
+        }
+
+        .cell.selected {
+            background-color: rgba(100, 200, 100, 0.3);
+            border: 2px solid #64c864;
+        }
+
+        #selection-rectangle {
+            position: absolute;
+            background-color: rgba(100, 200, 255, 0.2);
+            border: 2px dashed #64a8ff;
+            pointer-events: none;
+            z-index: 1;
+            display: none;
+        }
+
+        #confirmPlacement {
+            display: none;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Shikaku Puzzle Game</h1>
+    
+    <div class="info-panel">
+        <div class="timer">Time: <span id="time">0</span>s</div>
+        <div id="message" class="message"></div>
+    </div>
+    
+    <div class="game-container">
+        <div class="board" id="board">
+            <div id="selection-rectangle"></div>
+        </div>
+        
+        <div class="controls">
+            <button id="resetBtn">New Game</button>
+            <button id="confirmPlacement">Confirm Placement</button>
+            <div class="rectangle-palette" id="palette"></div>
+        </div>
+    </div>
+
+    <script>
+        // Game configuration
+        const config = {
+            rows: 8,
+            cols: 8,
+            minRectSize: 1,
+            maxRectSize: 2
+        };
+        
+        // Game state
+        let board = [];
+        let rectangles = [];
+        let placedRectangles = [];
+        let selectedRectangleId = null;
+        let startTime = null;
+        let timerInterval = null;
+        let isSelecting = false;
+        let selectionStart = { x: 0, y: 0 };
+        let currentSelection = null;
+        
+        // DOM elements
+        const boardElement = document.getElementById('board');
+        const paletteElement = document.getElementById('palette');
+        const resetBtn = document.getElementById('resetBtn');
+        const timeElement = document.getElementById('time');
+        const messageElement = document.getElementById('message');
+        const confirmBtn = document.getElementById('confirmPlacement');
+        const selectionRect = document.getElementById('selection-rectangle');
+        
+        // Initialize game
+        function initGame() {
+            // Clear previous state
+            clearInterval(timerInterval);
+            boardElement.innerHTML = '<div id="selection-rectangle"></div>';
+            paletteElement.innerHTML = '';
+            placedRectangles = [];
+            selectedRectangleId = null;
+            
+            // Generate board and rectangles
+            board = generateBoard(config.rows, config.cols);
+            rectangles = generateRectangles(board);
+            
+            // Render board
+            renderBoard();
+            
+            // Render rectangle palette
+            renderPalette();
+            
+            // Start timer
+            startTime = new Date();
+            timerInterval = setInterval(updateTimer, 1000);
+            
+            showMessage('Game started! Click and drag to select rectangles.', 'success');
+        }
+        
+        // Generate empty board
+        function generateBoard(rows, cols) {
+            const board = [];
+            for (let i = 0; i < rows; i++) {
+                const row = [];
+                for (let j = 0; j < cols; j++) {
+                    row.push({
+                        value: 0,
+                        x: j,
+                        y: i
+                    });
+                }
+                board.push(row);
+            }
+            return board;
+        }
+        
+        // Generate rectangles for the board
+        function generateRectangles(board) {
+            const rectangles = [];
+            const usedCells = new Set();
+            const rows = board.length;
+            const cols = board[0].length;
+            
+            // Helper function to check if area is available
+            function isAreaAvailable(x, y, width, height) {
+                for (let i = y; i < y + height; i++) {
+                    for (let j = x; j < x + width; j++) {
+                        if (i >= rows || j >= cols || usedCells.has(`${j},${i}`)) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+            
+            // Helper function to mark area as used
+            function markAreaUsed(x, y, width, height) {
+                for (let i = y; i < y + height; i++) {
+                    for (let j = x; j < x + width; j++) {
+                        usedCells.add(`${j},${i}`);
+                    }
+                }
+            }
+            
+            // Generate rectangles until board is filled
+            while (usedCells.size < rows * cols) {
+                const width = Math.floor(Math.random() * (config.maxRectSize - config.minRectSize + 1)) + config.minRectSize;
+                const height = Math.floor(Math.random() * (config.maxRectSize - config.minRectSize + 1)) + config.minRectSize;
+                
+                // Find random available position
+                let found = false;
+                let attempts = 0;
+                let x, y;
+                
+                while (!found && attempts < 100) {
+                    x = Math.floor(Math.random() * cols);
+                    y = Math.floor(Math.random() * rows);
+                    
+                    if (!usedCells.has(`${x},${y}`)) {
+                        // Check if rectangle fits
+                        if (x + width <= cols && y + height <= rows && isAreaAvailable(x, y, width, height)) {
+                            found = true;
+                        }
+                    }
+                    attempts++;
+                }
+                
+                if (found) {
+                    const rectangle = {
+                        id: generateId(),
+                        width,
+                        height,
+                        area: width * height,
+                        isPlaced: false,
+                        x: null,
+                        y: null
+                    };
+                    rectangles.push(rectangle);
+                    markAreaUsed(x, y, width, height);
+                    
+                    // Update board cells with rectangle info
+                    for (let i = y; i < y + height; i++) {
+                        for (let j = x; j < x + width; j++) {
+                            board[i][j].value = rectangle.id;
+                        }
+                    }
+                } else {
+                    // If we can't place a rectangle after many attempts, fill remaining cells with 1x1 rectangles
+                    for (let i = 0; i < rows; i++) {
+                        for (let j = 0; j < cols; j++) {
+                            if (!usedCells.has(`${j},${i}`)) {
+                                const rectangle = {
+                                    id: generateId(),
+                                    width: 1,
+                                    height: 1,
+                                    area: 1,
+                                    isPlaced: false,
+                                    x: null,
+                                    y: null
+                                };
+                                rectangles.push(rectangle);
+                                board[i][j].value = rectangle.id;
+                                usedCells.add(`${j},${i}`);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            return rectangles;
+        }
+        
+        // Generate unique ID
+        function generateId() {
+            return Math.random().toString(36).substr(2, 9);
+        }
+        
+        // Render the game board
+        function renderBoard() {
+            // Set grid dimensions
+            boardElement.style.gridTemplateColumns = `repeat(${config.cols}, 40px)`;
+            boardElement.style.gridTemplateRows = `repeat(${config.rows}, 40px)`;
+            
+            // Create cells
+            board.forEach((row, y) => {
+                row.forEach((cell, x) => {
+                    const cellElement = document.createElement('div');
+                    cellElement.className = 'cell';
+                    cellElement.dataset.x = x;
+                    cellElement.dataset.y = y;
+                    
+                    // Show area number if this is the top-left cell of a rectangle
+                    const rect = rectangles.find(r => r.id === cell.value);
+                    if (rect) {
+                        const isTopLeft = board[y][x].value === rect.id && 
+                                         (x === 0 || board[y][x-1].value !== rect.id) && 
+                                         (y === 0 || board[y-1][x].value !== rect.id);
+                        if (isTopLeft) {
+                            cellElement.textContent = rect.area;
+                            cellElement.style.fontWeight = 'bold';
+                        }
+                    }
+                    
+                    cellElement.addEventListener('mousedown', handleSelectionStart);
+                    boardElement.appendChild(cellElement);
+                });
+            });
+            
+            // Draw already placed rectangles
+            placedRectangles.forEach(rect => {
+                drawRectangle(rect);
+            });
+            
+            // Add event listeners for selection
+            boardElement.addEventListener('mousemove', handleSelectionMove);
+            boardElement.addEventListener('mouseup', handleSelectionEnd);
+            boardElement.addEventListener('mouseleave', handleSelectionEnd);
+        }
+        
+        // Render the rectangle palette
+        function renderPalette() {
+            paletteElement.innerHTML = '';
+            
+            rectangles.forEach(rect => {
+                if (!placedRectangles.some(r => r.id === rect.id)) {
+                    const rectElement = document.createElement('div');
+                    rectElement.className = 'palette-rectangle';
+                    rectElement.dataset.rectId = rect.id;
+                    rectElement.textContent = `${rect.width}×${rect.height}`;
+                    
+                    rectElement.addEventListener('click', () => {
+                        document.querySelectorAll('.palette-rectangle').forEach(el => {
+                            el.classList.remove('selected');
+                        });
+                        rectElement.classList.add('selected');
+                        selectRectangle(rect.id);
+                    });
+                    
+                    paletteElement.appendChild(rectElement);
+                }
+            });
+        }
+        
+        // Draw a rectangle on the board
+        function drawRectangle(rect) {
+            const rectElement = document.createElement('div');
+            rectElement.className = 'rectangle';
+            rectElement.style.width = `${rect.width * 40}px`;
+            rectElement.style.height = `${rect.height * 40}px`;
+            rectElement.style.left = `${rect.x * 40}px`;
+            rectElement.style.top = `${rect.y * 40}px`;
+            boardElement.appendChild(rectElement);
+        }
+        
+        // Handle selection start
+        function handleSelectionStart(e) {
+            if (selectedRectangleId) return;
+            
+            const cell = e.target.closest('.cell');
+            if (!cell) return;
+            
+            isSelecting = true;
+            selectionStart = {
+                x: parseInt(cell.dataset.x),
+                y: parseInt(cell.dataset.y)
+            };
+            
+            // Clear previous selections
+            document.querySelectorAll('.cell.selected').forEach(c => c.classList.remove('selected'));
+            
+            // Initialize selection rectangle
+            selectionRect.style.display = 'block';
+            selectionRect.style.left = `${selectionStart.x * 40}px`;
+            selectionRect.style.top = `${selectionStart.y * 40}px`;
+            selectionRect.style.width = '40px';
+            selectionRect.style.height = '40px';
+        }
+        
+        // Handle selection movement
+        function handleSelectionMove(e) {
+            if (!isSelecting) return;
+            
+            const cell = e.target.closest('.cell');
+            if (!cell) return;
+            
+            const currentX = parseInt(cell.dataset.x);
+            const currentY = parseInt(cell.dataset.y);
+            
+            // Calculate selection rectangle dimensions
+            const minX = Math.min(selectionStart.x, currentX);
+            const maxX = Math.max(selectionStart.x, currentX);
+            const minY = Math.min(selectionStart.y, currentY);
+            const maxY = Math.max(selectionStart.y, currentY);
+            
+            // Update visual selection rectangle
+            selectionRect.style.left = `${minX * 40}px`;
+            selectionRect.style.top = `${minY * 40}px`;
+            selectionRect.style.width = `${(maxX - minX + 1) * 40}px`;
+            selectionRect.style.height = `${(maxY - minY + 1) * 40}px`;
+            
+            // Highlight cells
+            document.querySelectorAll('.cell.highlight').forEach(c => c.classList.remove('highlight'));
+            
+            for (let y = minY; y <= maxY; y++) {
+                for (let x = minX; x <= maxX; x++) {
+                    const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                    if (cell) cell.classList.add('highlight');
+                }
+            }
+        }
+        
+        // Handle selection end
+        function handleSelectionEnd(e) {
+            if (!isSelecting) return;
+            isSelecting = false;
+            
+            const cell = e.target.closest('.cell');
+            if (!cell) return;
+            
+            const endX = parseInt(cell.dataset.x);
+            const endY = parseInt(cell.dataset.y);
+            
+            // Calculate selected area
+            const width = Math.abs(endX - selectionStart.x) + 1;
+            const height = Math.abs(endY - selectionStart.y) + 1;
+            
+            // Find matching rectangle in palette
+            const matchingRect = rectangles.find(rect => 
+                rect.width === width && 
+                rect.height === height &&
+                !placedRectangles.some(placed => placed.id === rect.id)
+            );
+            
+            if (matchingRect) {
+                // Select the rectangle
+                document.querySelectorAll('.palette-rectangle').forEach(el => {
+                    el.classList.remove('selected');
+                });
+                document.querySelector(`.palette-rectangle[data-rect-id="${matchingRect.id}"]`)
+                    .classList.add('selected');
+                
+                selectedRectangleId = matchingRect.id;
+                showMessage(`Selected ${width}×${height} rectangle. Click to place.`, 'success');
+                
+                // Mark selected cells
+                const minX = Math.min(selectionStart.x, endX);
+                const minY = Math.min(selectionStart.y, endY);
+                
+                for (let y = minY; y < minY + height; y++) {
+                    for (let x = minX; x < minX + width; x++) {
+                        const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                        if (cell) {
+                            cell.classList.remove('highlight');
+                            cell.classList.add('selected');
+                        }
+                    }
+                }
+                
+                // Set up click handler for placement
+                boardElement.addEventListener('click', handlePlacementClick);
+            } else {
+                showMessage('No matching rectangle available', 'error');
+            }
+            
+            // Hide selection rectangle
+            selectionRect.style.display = 'none';
+            document.querySelectorAll('.cell.highlight').forEach(c => c.classList.remove('highlight'));
+        }
+        
+        // Handle placement click
+        function handlePlacementClick(e) {
+            const cell = e.target.closest('.cell');
+            if (!cell) return;
+            
+            const x = parseInt(cell.dataset.x);
+            const y = parseInt(cell.dataset.y);
+            
+            const rectangle = rectangles.find(r => r.id === selectedRectangleId);
+            if (!rectangle) return;
+            
+            // Check if placement is valid
+            if (x < 0 || y < 0 || 
+                x + rectangle.width > config.cols || 
+                y + rectangle.height > config.rows) {
+                showMessage('Invalid placement - rectangle would extend beyond board', 'error');
+                return;
+            }
+            
+            // Check for overlaps with already placed rectangles
+            for (const placed of placedRectangles) {
+                if (x < placed.x + placed.width &&
+                    x + rectangle.width > placed.x &&
+                    y < placed.y + placed.height &&
+                    y + rectangle.height > placed.y) {
+                    showMessage('Invalid placement - rectangles overlap', 'error');
+                    return;
+                }
+            }
+            
+            // Place the rectangle
+            const placedRectangle = {
+                ...rectangle,
+                x,
+                y,
+                isPlaced: true
+            };
+            
+            placedRectangles.push(placedRectangle);
+            drawRectangle(placedRectangle);
+            renderPalette();
+            
+            // Clear selection
+            document.querySelectorAll('.cell.selected').forEach(c => c.classList.remove('selected'));
+            document.querySelectorAll('.palette-rectangle.selected').forEach(el => {
+                el.classList.remove('selected');
+            });
+            selectedRectangleId = null;
+            
+            // Remove placement click handler
+            boardElement.removeEventListener('click', handlePlacementClick);
+            
+            // Check win condition
+            if (checkWinCondition()) {
+                clearInterval(timerInterval);
+                const endTime = new Date();
+                const elapsed = (endTime - startTime) / 1000;
+                showMessage(`Congratulations! You solved the puzzle in ${elapsed.toFixed(1)} seconds!`, 'success');
+            } else {
+                showMessage('Rectangle placed successfully', 'success');
+            }
+        }
+        
+        // Check win condition
+        function checkWinCondition() {
+            // Create a set of all cells that should be covered
+            const requiredCoverage = new Set();
+            for (let i = 0; i < config.rows; i++) {
+                for (let j = 0; j < config.cols; j++) {
+                    requiredCoverage.add(`${j},${i}`);
+                }
+            }
+            
+            // Check all placed rectangles cover exactly the required cells
+            for (const rect of placedRectangles) {
+                for (let i = rect.y; i < rect.y + rect.height; i++) {
+                    for (let j = rect.x; j < rect.x + rect.width; j++) {
+                        const cellKey = `${j},${i}`;
+                        if (!requiredCoverage.has(cellKey)) {
+                            return false; // Overlapping or out of bounds
+                        }
+                        requiredCoverage.delete(cellKey);
+                    }
+                }
+            }
+            
+            return requiredCoverage.size === 0;
+        }
+        
+        // Update timer display
+        function updateTimer() {
+            const currentTime = new Date();
+            const elapsed = (currentTime - startTime) / 1000;
+            timeElement.textContent = elapsed.toFixed(1);
+        }
+        
+        // Show message to user
+        function showMessage(text, type) {
+            messageElement.textContent = text;
+            messageElement.className = `message ${type}`;
+            setTimeout(() => {
+                messageElement.textContent = '';
+                messageElement.className = 'message';
+            }, 3000);
+        }
+        
+        // Event listeners
+        resetBtn.addEventListener('click', initGame);
+        
+        // Initialize the game when page loads
+        document.addEventListener('DOMContentLoaded', initGame);
+    </script>
+</body>
+</html>
